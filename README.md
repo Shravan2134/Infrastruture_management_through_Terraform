@@ -1,5 +1,4 @@
 ## README: Deploying a Scalable Web Server on GCP using Terraform
-
 ### **Overview**
 This project demonstrates how to use Terraform to deploy a scalable web server on Google Cloud Platform (GCP). The infrastructure includes:
 - A Virtual Machine (VM) instance running Apache web server.
@@ -117,50 +116,91 @@ Run the following commands:
 
 ### **Troubleshooting**
 
-#### **1. Insufficient `boot_disk` Blocks**
-If you encounter the error:
+#### **1. GCP Authentication Troubleshooting**
+Refer to the **GCP authentication troubleshooting section** for handling issues like missing credentials, insufficient permissions, or incorrect project configurations.
+
+---
+
+#### **2. GitHub Push Troubleshooting**
+
+##### **Problem: Large Files in `.terraform` Directory**
+If you encounter an error like:
 ```
-Error: Insufficient boot_disk blocks
-```
-Ensure you are using the `boot_disk` block with `initialize_params` in your VM configuration:
-```hcl
-boot_disk {
-  initialize_params {
-    image = "projects/debian-cloud/global/images/family/debian-11"
-  }
-  auto_delete = true
-}
+File .terraform/providers/... exceeds GitHub's file size limit of 100.00 MB
 ```
 
-#### **2. Unsupported `region` Argument**
-If you see:
-```
-Error: Unsupported argument
-An argument named "region" is not expected here.
-```
-Remove the `region` argument from the `google_compute_instance` block and use `zone` instead:
-```hcl
-zone = "us-central1-a"
-```
+**Solution**:
+1. Add `.terraform` and `.terraform.lock.hcl` to `.gitignore`:
+   ```bash
+   echo ".terraform/" >> .gitignore
+   echo ".terraform.lock.hcl" >> .gitignore
+   ```
+2. Remove `.terraform` from Git's index:
+   ```bash
+   git rm -r --cached .terraform
+   ```
+3. Commit the changes:
+   ```bash
+   git add .gitignore
+   git commit -m "Exclude .terraform files"
+   ```
 
-#### **3. Invalid Disk Configuration**
-If you used the `disk` block instead of `boot_disk`, you may encounter:
-```
-Error: Unsupported block type
-```
-Replace the `disk` block with the `boot_disk` block.
+---
 
-#### **4. Permissions Issue**
-If Terraform fails with an authentication error, ensure your service account key is correctly specified in the `credentials` argument:
-```hcl
-credentials = file("/path/to/service_key.json")
-```
-Also, verify that the service account has the necessary roles (e.g., `Compute Admin`, `Compute Network Admin`).
+##### **Problem: Large Files Persist in Git History**
+Large files in previous commits must be removed entirely.
 
-#### **5. No HTTP Access**
-If you cannot access the web server in the browser:
-- Verify the firewall rule allows traffic on port 80.
-- Ensure the `tags = ["http-server"]` in the VM resource matches `target_tags = ["http-server"]` in the firewall rule.
+**Option 1: Use BFG Repo-Cleaner**
+1. Download the **BFG Repo-Cleaner** JAR file from [BFG Repo-Cleaner](https://rtyley.github.io/bfg-repo-cleaner/).
+2. Run the following to delete `.terraform` files from the history:
+   ```bash
+   java -jar bfg-1.13.0.jar --delete-files ".terraform*" .
+   ```
+3. Clean up and prune:
+   ```bash
+   git reflog expire --expire=now --all
+   git gc --prune=now --aggressive
+   ```
+4. Push the cleaned repository:
+   ```bash
+   git push origin main --force
+   ```
+
+**Option 2: Use a Fresh Clone with `git filter-repo`**
+1. Clone a fresh copy:
+   ```bash
+   git clone https://github.com/<your-repo>.git /tmp/fresh-clone
+   cd /tmp/fresh-clone
+   ```
+2. Use `git filter-repo` to remove the large file:
+   ```bash
+   git filter-repo --path .terraform/providers/.../terraform-provider-google_v6.31.0_x5 --invert-paths
+   ```
+3. Prune and force push:
+   ```bash
+   git reflog expire --expire=now --all
+   git gc --prune=now --aggressive
+   git push origin main --force
+   ```
+
+---
+
+### **3. GitHub BFG Method**
+If the Snap-based installation of BFG fails:
+1. Use `git filter-repo` instead (steps above).
+2. As a last resort, reinitialize the repository:
+   - Remove the Git folder:
+     ```bash
+     rm -rf .git
+     ```
+   - Reinitialize and commit:
+     ```bash
+     git init
+     git add .
+     git commit -m "Reinitialize repository"
+     git remote add origin <repo-url>
+     git push -u origin main --force
+     ```
 
 ---
 
@@ -171,8 +211,4 @@ terraform destroy
 ```
 Confirm with `yes` to delete all created resources.
 
----
-
-### **Conclusion**
-This project demonstrates how to automate GCP infrastructure deployment using Terraform. You’ve created a web server that scales dynamically with traffic and learned how to troubleshoot common Terraform errors.
 
